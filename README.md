@@ -1,4 +1,4 @@
 kaggle
 ======
 
-Kaggle fun competitions runs
+Kaggle competetions to track changes for my own sanity

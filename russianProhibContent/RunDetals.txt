@@ -1,0 +1,7 @@
+Run details:
+
+TFIDF count with only single terms
+We only used text, description and title -- no category or sub category
+CV 5, metric -> precision
+CV results [ 0.96663815  0.9655675   0.96541871  0.9659756   0.9662358 ]
+leaderboard results 0.95
