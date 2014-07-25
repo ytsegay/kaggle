@@ -1,7 +1,26 @@
 Run details:
 
+Submission 1:
+-------------
 TFIDF count with only single terms
 We only used text, description and title -- no category or sub category
 CV 5, metric -> precision
 CV results [ 0.96663815  0.9655675   0.96541871  0.9659756   0.9662358 ]
 leaderboard results 0.95
+
+
+notes: This is how you get top 10 features and their names from a model that supports featureimportance
+rf_model = RandomForestClassifier(n_estimators=10, compute_importances=True)
+#This prints the top 10 most important features
+print sorted(zip(rf_model.feature_importances_, vectorizer.get_feature_names()), reverse=True)[:10]
+
+This has another examples
+http://scikit-learn.org/stable/auto_examples/ensemble/plot_forest_importances.html
+
+Submission 2:
+---------------
+removed stemming
+used a new list of stop words
+tuned lr's paramteres using gridsearch
+Tried combining existing numeric feats with no additional improvements
+Improved p@X by 0.009 moving up seven spots in the leaderboard fo this week

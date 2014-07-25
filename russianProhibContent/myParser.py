@@ -6,7 +6,12 @@ import random
 import pickle
 
 def populateRussianStopWords():
-	arr = [word.decode('utf-8') for word in nltk.corpus.stopwords.words("russian") if word != "He"]
+	f = open('data/stopwords_ru.txt', 'rb')
+	lines = f.readlines()
+	f.close()
+	#arr = [word.decode('utf-8') for word in nltk.corpus.stopwords.words("russian") if word != "He"]
+	arr = [word.strip().decode('utf-8') for word in lines]
+
 	return arr
 
 stopwords = populateRussianStopWords()
@@ -96,10 +101,8 @@ def load_data(fileName, linesCount, columnsToUse):
 				item = {featureName: featureValue.decode('utf-8') for featureName,featureValue in item.iteritems()}
 				for columnToUse in columnsToUse:
 					words = tokenizer.tokenize(item[columnToUse])
-
 					item[columnToUse] = normalize_words(words, True, True)
-				
-				item['attrs'] = ''
+
 				
 				if 'is_blocked' in item and item['is_blocked'] == u'1':
 					countPos += 1
@@ -108,27 +111,30 @@ def load_data(fileName, linesCount, columnsToUse):
 					cleanedDataNotBlocked.append(item)
 				total += 1
 			linesCounter += 1
+			if ((linesCounter % 10000) == 0):
+				print linesCounter,"\r"
 	return cleanedDataNotBlocked,cleanedDataBlocked
 
 	
 
 if __name__=="__main__":
-	#outputUnBlocked, outputBlocked = load_data("/Users/ytsegay/dataProjects/kaggle/russianadds/data/train.tsv", 100000, ['category', 'subcategory', 'title', 'description'])
-	#sampledOutputBlocked = random.sample(outputUnBlocked, len(outputBlocked))
-
-	#fklFl = open("output/trainunblocked.pkl", "wb")
-	#pickle.dump(outputUnBlocked, fklFl);
-	#fklFl.close()
+	train = False;
+	if train == True:
+		outputUnBlocked, outputBlocked = load_data("data/train.tsv", 100000, ['category', 'subcategory', 'title', 'description', 'attrs'])
 	
-	#fklFl = open("output/trainblocked.pkl", "wb")
-	#pickle.dump(outputBlocked, fklFl);
-	#fklFl.close()
-	
-	outputUnBlocked, outputBlocked = load_data("/Users/ytsegay/dataProjects/kaggle/russianadds/data/test.tsv", 100000, ['category', 'subcategory', 'title', 'description'])
-	fklFl = open("output/testUnblocked.pkl", "wb")
-	pickle.dump(outputUnBlocked, fklFl);
-	fklFl.close()
-	
-	fklFl = open("output/testBlocked.pkl", "wb")
-	pickle.dump(outputBlocked, fklFl);
-	fklFl.close()
+		fklFl = open("output/trainunblocked.pkl", "wb")
+		pickle.dump(outputUnBlocked, fklFl);
+		fklFl.close()
+		
+		fklFl = open("output/trainblocked.pkl", "wb")
+		pickle.dump(outputBlocked, fklFl);
+		fklFl.close()
+	else:
+		outputUnBlocked, outputBlocked = load_data("data/test.tsv", 100000, ['category', 'subcategory', 'title', 'description', 'attrs'])
+		fklFl = open("output/testUnblocked.pkl", "wb")
+		pickle.dump(outputUnBlocked, fklFl);
+		fklFl.close()
+		
+		fklFl = open("output/testBlocked.pkl", "wb")
+		pickle.dump(outputBlocked, fklFl);
+		fklFl.close()
