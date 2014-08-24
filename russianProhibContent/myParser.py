@@ -108,12 +108,12 @@ def load_data(fileName, linesCount, columnsToUse):
                         for e in a:
                             p = e.split('":"')
                             if (len(p) == 2):
-                                arr[normalize_words([p[0]], True, True)] = normalize_words([p[1]], False, True)
+                                arr[normalize_words([p[0]], True, True)] = normalize_words([p[1]], True, True)
                         item[columnToUse] = arr
                         #print item[columnToUse]
                     else:
                         words = tokenizer.tokenize(item[columnToUse])
-                        item[columnToUse] = normalize_words(words, False, True)
+                        item[columnToUse] = normalize_words(words, True, True)
 
 
                 if 'is_blocked' in item and item['is_blocked'] == u'1':
@@ -130,7 +130,7 @@ def load_data(fileName, linesCount, columnsToUse):
 
 
 if __name__=="__main__":
-    train = False;
+    train = True;
     if train == True:
         outputUnBlocked, outputBlocked = load_data("data/train.tsv", 100000, ['category', 'subcategory', 'title', 'description', 'attrs'])
 

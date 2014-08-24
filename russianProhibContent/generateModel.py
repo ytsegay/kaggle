@@ -11,6 +11,7 @@ from sklearn.cross_validation import train_test_split
 from sklearn.naive_bayes import BernoulliNB, MultinomialNB
 from sklearn import linear_model
 from sklearn import svm
+from sklearn.linear_model import RidgeClassifier
 
 import numpy
 import time
@@ -112,12 +113,12 @@ def cleanUpData(rows, sampleSize, features, hasTarget=True):
 
 
 
-
-    print countofApproved
-    durationOfAdd = numpy.array(durationOfAdd)
-    print "duration mean: ", numpy.mean(durationOfAdd)
-    print "duration stddev: ", numpy.std(durationOfAdd)
-    print "duration median: ", numpy.median(durationOfAdd)
+    #
+    # print countofApproved
+    # durationOfAdd = numpy.array(durationOfAdd)
+    # print "duration mean: ", numpy.mean(durationOfAdd)
+    # print "duration stddev: ", numpy.std(durationOfAdd)
+    # print "duration median: ", numpy.median(durationOfAdd)
 
 
 def encodeCategoricalStringFeats(rows):
@@ -136,12 +137,19 @@ def loadPickledFile(fileName):
     fl.close()
     return pcl;
 
-if __name__=="__main__":
+def evaluate(predict, truth, name, is_proba=True):
+    rounded = predict
+    if is_proba:
+        rounded = [numpy.round(entry) for entry in predict]
+    score = precision_score(truth, rounded)
+    print "Using ",name, " score: ", score
+    return score
+
+def loadData():
     t0 = time.time()
     blocked = loadPickledFile('output/trainblocked.pkl')
     t1 = time.time()
     print "unpicked blocked, took ",(t1-t0)
-
 
     t0 = time.time()
     unblocked = loadPickledFile('output/trainunblocked.pkl')
@@ -169,11 +177,116 @@ if __name__=="__main__":
     del blocked
     del unblocked
 
-#    t0 = time.time()
-#    wordVectorizer = TfidfVectorizer(ngram_range=(1,1), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=50000, max_df=0.9, lowercase=True)
-#    trainTfIdf = wordVectorizer.fit_transform(rows["textDescription"])
-#    t1 = time.time()
-#    print "vectorized. Took ", (t1-t0)
+    return rows
+
+def train(rows):
+    print "Training ... "
+    t0 = time.time()
+
+    target = numpy.array(rows["target"])
+    numericFeats = numpy.array(rows["numericDescription"], dtype=float)
+    rows["textDescription"] = numpy.array(rows["textDescription"])
+
+    scores = []
+    # split into train and test
+    rs = cross_validation.ShuffleSplit(len(target), 5, test_size=0.2)
+    for trainSetIndex, holdoutIndex in rs:
+
+        # 0. get the data splits, here test is split into train and test to generate input for the secondary model
+        trainIndex, testIndex = train_test_split(trainSetIndex, test_size=0.2, random_state=42)
+
+        # 1. text based features
+        wordVectorizer = TfidfVectorizer(ngram_range=(1,3), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=50000, max_df=0.9, lowercase=True)
+        trainTfIdf = wordVectorizer.fit_transform(rows["textDescription"][trainIndex])
+        testTfIdf = wordVectorizer.transform(rows["textDescription"][testIndex])
+
+        # model text features
+        clf1 = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True,intercept_scaling=0.1).fit(trainTfIdf, target[trainIndex])
+        wordsTestPredictLR = clf1.predict_proba(testTfIdf)[:,1]
+        evaluate(wordsTestPredictLR, target[testIndex], name="wordsTestPredictLR")
+
+        clf2 = linear_model.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.000001,n_jobs=2).fit(trainTfIdf, target[trainIndex])
+        wordsTestPredictSGD = clf2.predict(testTfIdf)
+        evaluate(wordsTestPredictSGD, target[testIndex], name="wordsTestPredictSGD")
+
+        clf3 = svm.LinearSVC().fit(trainTfIdf, target[trainIndex])
+        wordsTestPredictSVC = clf3.predict(testTfIdf)
+        evaluate(wordsTestPredictSVC, target[testIndex], name="wordsTestPredictSVC", is_proba=False)
+
+        clf4 = RidgeClassifier(tol=0.000001, normalize=True).fit(trainTfIdf, target[trainIndex])
+        wordsTestPredictRidge = clf4.predict(testTfIdf)
+        evaluate(wordsTestPredictRidge, target[testIndex], name="wordsTestPredictRidge", is_proba=False)
+
+
+        # # 2. numeric features, some need to be one hot encoded some don't
+        # nonencodable = numericFeats[:,[5,6,7,8]]
+        # enc = OneHotEncoder()
+        # hotEncoded = numpy.array(enc.fit_transform(numericFeats[:,[0,1,2,3,4]]).toarray().tolist())
+        # newFeats = numpy.concatenate((hotEncoded, nonencodable), axis=1)
+        #
+        # # model numeric features
+        # clfNum1 = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True,intercept_scaling=0.1).fit(newFeats[trainIndex,:], target[trainIndex])
+        # numericFeatsPredictLR = clfNum1.predict_proba(newFeats[testIndex,:])[:,1]
+        # evaluate(numericFeatsPredictLR, target[testIndex], name="numericFeatsPredictLR")
+        #
+        # clfNum2 = RandomForestClassifier(200).fit(newFeats[trainIndex,:], target[trainIndex])
+        # numericFeatsPredictRF = clfNum2.predict_proba(newFeats[testIndex,:])[:,1]
+        # evaluate(numericFeatsPredictRF, target[testIndex], name="numericFeatsPredictRF")
+        #
+        # #clfNum3 = GradientBoostingClassifier(100).fit(newFeats[trainIndex,:], target[trainIndex])
+        # #numericFeatsPredictGBT = clfNum3.predict_proba(newFeats[testIndex,:])[:,1]
+        #
+        # clfNum4 = svm.LinearSVC().fit(newFeats[trainIndex,:], target[trainIndex])
+        # numericFeatsPredictSVC = clfNum4.predict(newFeats[testIndex,:])
+        # evaluate(numericFeatsPredictSVC, target[testIndex], name="numericFeatsPredictSVC", is_proba=False)
+
+
+
+        #3. numeric feats + textfeats => to generate level2 model
+        featsModelLevel2 = numpy.column_stack((wordsTestPredictLR, wordsTestPredictSGD, wordsTestPredictSVC, wordsTestPredictRidge))#, numericFeatsPredictRF, numericFeatsPredictSVC))
+
+        # train on previous steps predict's target
+        #clfLevel2 = GradientBoostingClassifier(n_estimators=100, random_state=0)
+        clfLevel2 = lm.LogisticRegression().fit(featsModelLevel2, target[testIndex])
+        clfLevel21 = GradientBoostingClassifier(n_estimators=500, random_state=0).fit(featsModelLevel2, target[testIndex])
+
+        lvlTwoTstTfIdf = wordVectorizer.transform(rows["textDescription"][holdoutIndex])
+
+
+        #4. now take the test inputs from the holdout set and train using the initial
+        #text and numeric models
+        wordsTestPredictLRHoldOut = clf1.predict_proba(lvlTwoTstTfIdf)[:,1]
+        wordsTestPredictSGDHoldOut = clf2.predict(lvlTwoTstTfIdf)
+        wordsTestPredictSVCHoldOut = clf3.predict(lvlTwoTstTfIdf)
+        wordsTestPredictRidgeHoldOut = clf4.predict(lvlTwoTstTfIdf)
+
+
+        # # and now for numeric features
+        # numericFeatsPredictLRHoldOut = clfNum1.predict_proba(newFeats[holdoutIndex,:])[:,1]
+        # numericFeatsPredictRFHoldOut = clfNum2.predict_proba(newFeats[holdoutIndex,:])[:,1]
+        # #numericFeatsPredictGBTHoldOut = clfNum3.predict_proba(newFeats[holdoutIndex,:])[:,1]
+        # numericFeatsPredictSVCHoldOut = clfNum4.predict(newFeats[holdoutIndex,:])
+
+
+        # create a feature set whose target is target{testIndex}
+        testFeatsLevelTwo = numpy.column_stack((wordsTestPredictLRHoldOut, wordsTestPredictSGDHoldOut, wordsTestPredictSVCHoldOut, wordsTestPredictRidgeHoldOut)) #, numericFeatsPredictRFHoldOut, numericFeatsPredictSVCHoldOut))
+
+        finalPredict = clfLevel2.predict_proba(testFeatsLevelTwo)[:,1]
+        evaluate(finalPredict, target[holdoutIndex], name="Level2LR", is_proba=True)
+
+        finalPredictGBM = clfLevel21.predict_proba(testFeatsLevelTwo)[:,1]
+        evaluate(finalPredictGBM, target[holdoutIndex], name="Level2GBM", is_proba=True)
+
+
+
+    print scores
+
+
+if __name__=="__main__":
+
+    rows = loadData()
+
+
 
     #### Testing
     testing = False
@@ -311,91 +424,5 @@ if __name__=="__main__":
 #            f.write(line)
 #        f.close()
     else:
-        print "Training ... "
-        t0 = time.time()
-
-        target = numpy.array(rows["target"])
-        numericFeats = numpy.array(rows["numericDescription"], dtype=float)
-        rows["textDescription"] = numpy.array(rows["textDescription"])
-
-        scores = []
-        # split into train and test
-        rs = cross_validation.ShuffleSplit(len(target), 5, test_size=0.2)
-        for trainSetIndex, holdoutIndex in rs:
-
-            # 0. get the data splits, here test is split into train and test to generate input for the secondary model
-            trainIndex, testIndex = train_test_split(trainSetIndex, test_size=0.2, random_state=42)
-
-            # 1. text based features
-            wordVectorizer = TfidfVectorizer(ngram_range=(1,1), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=50000, max_df=0.9, lowercase=True)
-            trainTfIdf = wordVectorizer.fit_transform(rows["textDescription"][trainIndex])
-            testTfIdf = wordVectorizer.transform(rows["textDescription"][testIndex])
-
-            # model text features
-            clf1 = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True,intercept_scaling=0.1).fit(trainTfIdf, target[trainIndex])
-            wordsTestPredictLR = clf1.predict_proba(testTfIdf)[:,1]
-
-            clf2 = MultinomialNB().fit(trainTfIdf, target[trainIndex])
-            wordsTestPredictRF = clf2.predict_proba(testTfIdf)[:,1]
-
-            clf3 = svm.LinearSVC().fit(trainTfIdf, target[trainIndex])
-            wordsTestPredictGBT = clf3.predict(testTfIdf)
-
-
-
-            # 2. numeric features, some need to be one hot encoded some don't
-            nonencodable = numericFeats[:,[5,6,7,8]]
-            enc = OneHotEncoder()
-            hotEncoded = numpy.array(enc.fit_transform(numericFeats[:,[0,1,2,3,4]]).toarray().tolist())
-            newFeats = numpy.concatenate((hotEncoded, nonencodable), axis=1)
-
-            # model numeric features
-            clfNum1 = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True,intercept_scaling=0.1).fit(newFeats[trainIndex,:], target[trainIndex])
-            numericFeatsPredictLR = clfNum1.predict_proba(newFeats[testIndex,:])[:,1]
-
-            clfNum2 = RandomForestClassifier(200).fit(newFeats[trainIndex,:], target[trainIndex])
-            numericFeatsPredictRF = clfNum2.predict_proba(newFeats[testIndex,:])[:,1]
-
-            #clfNum3 = GradientBoostingClassifier(100).fit(newFeats[trainIndex,:], target[trainIndex])
-            #numericFeatsPredictGBT = clfNum3.predict_proba(newFeats[testIndex,:])[:,1]
-
-            clfNum4 = svm.LinearSVC().fit(newFeats[trainIndex,:], target[trainIndex])
-            numericFeatsPredictSVC = clfNum4.predict(newFeats[testIndex,:])
-
-
-
-            #3. numeric feats + textfeats => to generate level2 model
-            featsModelLevel2 = numpy.column_stack((wordsTestPredictLR, wordsTestPredictRF, wordsTestPredictGBT, numericFeatsPredictLR, numericFeatsPredictRF, numericFeatsPredictSVC))
-
-            # train on previous steps predict's target
-            #clfLevel2 = GradientBoostingClassifier(n_estimators=100, random_state=0)
-            clfLevel2 = lm.LogisticRegression().fit(featsModelLevel2, target[testIndex])
-
-            lvlTwoTstTfIdf = wordVectorizer.transform(rows["textDescription"][holdoutIndex])
-
-
-            #4. now take the test inputs from the holdout set and train using the initial
-            #text and numeric models
-            wordsTestPredictLRHoldOut = clf1.predict_proba(lvlTwoTstTfIdf)[:,1]
-            wordsTestPredictRFHoldOut = clf2.predict_proba(lvlTwoTstTfIdf)[:,1]
-            wordsTestPredictGBTHoldOut = clf3.predict(lvlTwoTstTfIdf)
-
-            # and now for numeric features
-            numericFeatsPredictLRHoldOut = clfNum1.predict_proba(newFeats[holdoutIndex,:])[:,1]
-            numericFeatsPredictRFHoldOut = clfNum2.predict_proba(newFeats[holdoutIndex,:])[:,1]
-            #numericFeatsPredictGBTHoldOut = clfNum3.predict_proba(newFeats[holdoutIndex,:])[:,1]
-            numericFeatsPredictSVCHoldOut = clfNum4.predict(newFeats[holdoutIndex,:])
-
-
-            # create a feature set whose target is target{testIndex}
-            testFeatsLevelTwo = numpy.column_stack((wordsTestPredictLRHoldOut, wordsTestPredictRFHoldOut, wordsTestPredictGBTHoldOut, numericFeatsPredictLRHoldOut, numericFeatsPredictRFHoldOut, numericFeatsPredictSVCHoldOut))
-
-            finalPredict = clfLevel2.predict_proba(testFeatsLevelTwo)[:,1]
-
-            rounded = [numpy.round(entry) for entry in finalPredict]
-            score = precision_score(target[holdoutIndex], rounded)
-            scores.append(score)
-            print "Learned ...", score
-
-
-        print scores
+        train(rows)
+        print "hello"
