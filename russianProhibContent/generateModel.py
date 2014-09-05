@@ -8,134 +8,110 @@ from sklearn.ensemble import RandomForestClassifier,GradientBoostingClassifier
 from sklearn.metrics import precision_score
 from sklearn.metrics import classification_report
 from sklearn.cross_validation import train_test_split
-from sklearn.naive_bayes import BernoulliNB, MultinomialNB
-from sklearn import linear_model
-from sklearn import svm
-from sklearn.linear_model import RidgeClassifier
+import sklearn.svm as svm
 
 import numpy
 import time
 from sklearn.preprocessing import OneHotEncoder
 
 
-def targetMapper(str, isProvedIlicit=u'0'):
-    if str == u'1':
-        if isProvedIlicit == u'1':
+# used to map targets. Adds a separate class in the case a document is_proven (and that is passed)
+def target_mapper(target, is_proved_illicit=u'0'):
+    if target == u'1':
+        if is_proved_illicit == u'1':
             return 2
         return 1
     return 0
 
-def cleanUpData(rows, sampleSize, features, hasTarget=True):
 
-    countofApproved = {}
-    durationOfAdd = []
+#preps data to be used by vectorizer and classifier
+def prep_data(data_rows, sample_size, features, has_target=True):
 
-    sample = random.sample(xrange(len(rows)), sampleSize)
+    sample = random.sample(xrange(len(data_rows)), sample_size)
     for index in sample:
-        row = rows[index]
+        data_row = data_rows[index]
 
         #ad id
-        features["ids"].append(row["itemid"])
+        features["ids"].append(data_row["itemid"])
 
-        ###### textual work
-        # concat attribute keys and valus into a single string
-        attrs = ''
-        for keyz in row['attrs']:
-            attrs += " " + keyz + " " + row['attrs'][keyz]
-        attrs = attrs.strip()
+        #textual work
+        # concatenate attribute keys and values into a single string
+        attributes = ''
+        for key in data_row['attrs']:
+            attributes += " " + key + " " + data_row['attrs'][key]
+        attributes = attributes.strip()
 
-        # textual parts will be the title description and attributes
-        #
-        text = row['title'] + " " + row['description'] + " " + attrs + " "
+        # combine title + description and attrs into one text field
+        text = data_row['title'] + " " + data_row['description'] + " " + attributes + " "
         features["textDescription"].append(text)
 
-
-        ###### nuermic features
+        # numeric features
         arr = []
 
         # does the list contain a phone #?
-        hasPhone = 0
-        if (int(row['phones_cnt']) > 0):
-            hasPhone = 1
-        arr.append(hasPhone)
+        has_phone = 0
+        if int(data_row['phones_cnt']) > 0:
+            has_phone = 1
+        arr.append(has_phone)
 
         # boolean if it has an email
-        hasEmail = 0
-        if (int(row['emails_cnt']) > 0):
-            hasEmail = 1
-        arr.append(hasEmail)
+        has_email = 0
+        if int(data_row['emails_cnt']) > 0:
+            has_email = 1
+        arr.append(has_email)
 
         # boolean attribute if it has a URL
-        hasUrls = 0
-        if (int(row['urls_cnt']) > 0):
-            hasUrls = 1
-        arr.append(hasUrls)
+        has_urls = 0
+        if int(data_row['urls_cnt']) > 0:
+            has_urls = 1
+        arr.append(has_urls)
 
         # encode category and sub category
-        entry = row['subcategory']
+        # todo: find a better hashing method, rather than a dictionary lookup
+        entry = data_row['subcategory']
         if entry not in features["lookupSubCats"]:
             features["lookupSubCats"][entry] = len(features["lookupSubCats"])
         arr.append(features["lookupSubCats"][entry])
 
-        entry = row['category']
+        entry = data_row['category']
         if entry not in features["lookupCats"]:
             features["lookupCats"][entry] = len(features["lookupCats"])
         arr.append(features["lookupCats"][entry])
 
-
-        arr.append(float(row['price']))
+        arr.append(float(data_row['price']))
 
         # additional feature count words in title
-        titleLength = len(row['title'].split())
-        arr.append(titleLength)
+        title_length = len(data_row['title'].split())
+        arr.append(title_length)
 
         # count of words in the description
-        textLength = len(text.split())
-        arr.append(textLength)
+        text_length = len(text.split())
+        arr.append(text_length)
 
         # depth of the attributes
-        arr.append(len(row['attrs']))
+        arr.append(len(data_row['attrs']))
 
 
 
-        if hasTarget == True:
-            features["target"].append(targetMapper(row['is_blocked']))
+        if has_target:
+            features["target"].append(target_mapper(data_row['is_blocked'], data_row['is_proved']))
 
-            if row['is_proved'] not in countofApproved:
-                countofApproved[row['is_proved']] = 0
-            countofApproved[row['is_proved']] += 1
-
-            if row['close_hours'].strip() != '':
-                durationOfAdd.append(float(row['close_hours'])*60)
-
+            # if row['is_proved'] not in countofApproved:
+            #     countofApproved[row['is_proved']] = 0
+            # countofApproved[row['is_proved']] += 1
+            #
+            # if row['close_hours'].strip() != '':
+            #     durationOfAdd.append(float(row['close_hours'])*60)
 
         features["numericDescription"].append(arr)
 
 
-
-    #
-    # print countofApproved
-    # durationOfAdd = numpy.array(durationOfAdd)
-    # print "duration mean: ", numpy.mean(durationOfAdd)
-    # print "duration stddev: ", numpy.std(durationOfAdd)
-    # print "duration median: ", numpy.median(durationOfAdd)
-
-
-def encodeCategoricalStringFeats(rows):
-    lookUp = {}
-    arr = []
-    for entry in rows:
-        if entry not in lookUp:
-            lookUp[entry] = len(lookUp)
-        arr.append(lookUp[entry])
-    return numpy.array(arr)
-
-
-def loadPickledFile(fileName):
+def load_pickled_file(fileName):
     fl = open(fileName, 'rb')
     pcl = pickle.load(fl)
     fl.close()
     return pcl;
+
 
 def evaluate(predict, truth, name, is_proba=True):
     rounded = predict
@@ -145,115 +121,143 @@ def evaluate(predict, truth, name, is_proba=True):
     print "Using ",name, " score: ", score
     return score
 
-def loadData():
-    t0 = time.time()
-    blocked = loadPickledFile('output/trainblocked.pkl')
-    t1 = time.time()
-    print "unpicked blocked, took ",(t1-t0)
 
-    t0 = time.time()
-    unblocked = loadPickledFile('output/trainunblocked.pkl')
-    t1 = time.time()
-    print "unpicked unblocked, took ",(t1-t0)
+def load_data(train_mode=True):
+    data_rows = {}
+    if train_mode:
+        t0 = time.time()
+        blocked = load_pickled_file('output/trainblocked.pkl')
+        t1 = time.time()
+        print "unpickled blocked, took ",(t1-t0)
 
-    sampleSize = len(blocked)
-    rows = {}
+        t0 = time.time()
+        unblocked = load_pickled_file('output/trainunblocked.pkl')
+        t1 = time.time()
+        print "unpickled unblocked, took ",(t1-t0)
 
-    rows["textDescription"] = [];
-    rows["numericDescription"] = [];
-    rows["categoryDescription"] = [];
-    rows["subcategoryDescription"] = []
-    rows["ids"] = []
-    rows["target"] = []
-    rows["lookupCats"] = {}
-    rows["lookupSubCats"] = {}
+        # blocked are always smaller so will use them to make sure we get same size samples
+        # for both classes
+        sample_size = len(blocked)
 
-    t0 = time.time()
-    cleanUpData(blocked, sampleSize, rows)
-    cleanUpData(unblocked, sampleSize, rows)
-    t1 = time.time()
-    print "Done sampling, took ", (t1-t0), " Sample size: ", sampleSize
+        data_rows["textDescription"] = [];
+        data_rows["numericDescription"] = [];
+        data_rows["categoryDescription"] = [];
+        data_rows["subcategoryDescription"] = []
+        data_rows["ids"] = []
+        data_rows["target"] = []
+        data_rows["lookupCats"] = {}
+        data_rows["lookupSubCats"] = {}
 
-    del blocked
-    del unblocked
+        t0 = time.time()
+        prep_data(blocked, sample_size, data_rows)
+        prep_data(unblocked, sample_size, data_rows)
+        t1 = time.time()
+        print "Done sampling, took ", (t1-t0), " Sample size: ", sample_size
 
-    return rows
+        # free up some memory
+        del blocked
+        del unblocked
+    else:
+        t0 = time.time()
+        tst_data = load_pickled_file('output/testUnblocked.pkl')
+        t1 = time.time()
+        print "unpickled test, took ",(t1-t0)
 
-def test(rows):
+        data_rows["textDescription"] = []
+        data_rows["numericDescription"] = []
+        data_rows["categoryDescription"] = []
+        data_rows["subcategoryDescription"] = []
+        data_rows["ids"] = []
+        data_rows["target"] = []
+        data_rows["lookupCats"] = data_rows["lookupCats"]
+        data_rows["lookupSubCats"] = data_rows["lookupSubCats"]
+
+        prep_data(tst_data, len(tst_data), data_rows, False)
+
+        data_rows["textDescription"] = numpy.array(data_rows["textDescription"])
+        # done so free it up
+        del tst_data
+
+    return data_rows
+
+def test(train_rows, test_rows):
+    # need to load training data
+
     print "Testing ..."
-    rows["textDescription"] = numpy.array(rows["textDescription"])
-    target = numpy.array(rows["target"])
+    train_rows["textDescription"] = numpy.array(train_rows["textDescription"])
+    target = numpy.array(train_rows["target"])
 
-    wordVectorizer = TfidfVectorizer(ngram_range=(1,4), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=50000, max_df=0.9, lowercase=True)
-    trainTfIdf = wordVectorizer.fit_transform(rows["textDescription"])
-    clfs = {}
+    word_vectorizer = TfidfVectorizer(ngram_range=(1,4), analyzer="word", binary=False, min_df=2, smooth_idf=True,
+                                      sublinear_tf=True, use_idf=True, max_features=50000, max_df=0.9, lowercase=True)
+    train_tf_idf = word_vectorizer.fit_transform(train_rows["textDescription"])
 
-    #clfs['LSVC'] = svm.LinearSVC(C=1, class_weight=None, dual=False, fit_intercept=True, intercept_scaling=1, loss='l2', multi_class='ovr', penalty='l1',random_state=None, tol=0.001, verbose=0).fit(trainTfIdf, target)
-    clfs['LR'] = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True,intercept_scaling=0.1).fit(trainTfIdf, target)
+    clf = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True,
+                                intercept_scaling=0.1).fit(train_tf_idf, target)
 
-    testData = loadPickledFile('output/testUnblocked.pkl')
-    testrows = {}
+    tst_tf_idf = word_vectorizer.transform(test_rows["textDescription"])
 
-    testrows["textDescription"] = []
-    testrows["numericDescription"] = []
-    testrows["categoryDescription"] = []
-    testrows["subcategoryDescription"] = []
-    testrows["ids"] = []
-    testrows["target"] = []
-    testrows["lookupCats"] = rows["lookupCats"]
-    testrows["lookupSubCats"] = rows["lookupSubCats"]
+    tst_word_predict = clf.predict_proba(tst_tf_idf)[:,1]
 
-    cleanUpData(testData, len(testData), testrows, False)
+    zipped_proba_weight = sorted(zip(tst_word_predict, test_rows["ids"]), reverse=True)
 
-    testrows["textDescription"] = numpy.array(testrows["textDescription"])
-    tstTfIdf = wordVectorizer.transform(testrows["textDescription"])
-
-    for k in clfs:
-        tstWordPredict = clfs[k].predict_proba(tstTfIdf)[:,1]
-
-        zippedProbaWeight = sorted(zip(tstWordPredict, testrows["ids"]), reverse=True)
-        fileName = "output/predict_1_4grams_" + k + ".txt"
-        f = open(fileName,'w')
-        for entry in zippedProbaWeight:
-            line = str(entry[1]) + "\n"
-            f.write(line)
-        f.close()
+    f = open("output/predict_1_4grams_LR.txt",'w')
+    for entry in zipped_proba_weight:
+        line = str(entry[1]) + "\n"
+        f.write(line)
+    f.close()
 
 
-def train(rows):
+def fit_and_evaluate(clf, train_x, train_y, test_x, test_y, is_proba=True):
+    clf = clf.fit(train_x, train_y)
+    results = []
+    if is_proba:
+        results = clf.predict_proba(test_x)[:, 1]
+    else:
+        results = clf.predict(test_x)
+    evaluate(results, test_y, name="name", is_proba=False)
+    return results
+
+
+def train(train_rows):
     print "Training ... "
     t0 = time.time()
 
-    target = numpy.array(rows["target"])
-    numericFeats = numpy.array(rows["numericDescription"], dtype=float)
-    rows["textDescription"] = numpy.array(rows["textDescription"])
+    target = numpy.array(train_rows["target"])
+    numeric_feats = numpy.array(train_rows["numericDescription"], dtype=float)
+    train_rows["textDescription"] = numpy.array(train_rows["textDescription"])
 
     scores = []
     # split into train and test
     rs = cross_validation.ShuffleSplit(len(target), 3, test_size=0.2)
-    for trainSetIndex, holdoutIndex in rs:
+    for train_set_indices, holdout_indices in rs:
 
         # 0. get the data splits, here test is split into train and test to generate input for the secondary model
-        trainIndex, testIndex = train_test_split(trainSetIndex, test_size=0.2, random_state=42)
+        train_indices, test_indices = train_test_split(train_set_indices, test_size=0.2)
 
-    #     # 1. text based features
-    #     wordVectorizer = TfidfVectorizer(ngram_range=(1,4), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=50000, max_df=0.9, lowercase=True)
-    #     trainTfIdf = wordVectorizer.fit_transform(rows["textDescription"][trainIndex])
-    #     testTfIdf = wordVectorizer.transform(rows["textDescription"][testIndex])
-    #
-    #     # model text features
-    #     clf1 = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True,intercept_scaling=0.1).fit(trainTfIdf, target[trainIndex])
-    #     wordsTestPredictLR = clf1.predict_proba(testTfIdf)[:,1]
-    #     evaluate(wordsTestPredictLR, target[testIndex], name="wordsTestPredictLR")
-    #
-    #     clf2 = linear_model.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.000001,n_jobs=2).fit(trainTfIdf, target[trainIndex])
-    #     wordsTestPredictSGD = clf2.predict(testTfIdf)
-    #     evaluate(wordsTestPredictSGD, target[testIndex], name="wordsTestPredictSGD")
-    #
-    #     clf3 = svm.LinearSVC(C=1, class_weight=None, dual=False, fit_intercept=True, intercept_scaling=1, loss='l2', multi_class='ovr', penalty='l1',random_state=None, tol=0.001, verbose=0).fit(trainTfIdf, target[trainIndex])
-    #     wordsTestPredictSVC = clf3.predict(testTfIdf)
-    #     evaluate(wordsTestPredictSVC, target[testIndex], name="wordsTestPredictSVC", is_proba=False)
-    #
+
+        # 1. text based features
+        word_vectorizer = TfidfVectorizer(ngram_range=(1,4), analyzer="word", binary=False, min_df=2,
+                                          smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=50000,
+                                          max_df=0.9, lowercase=True)
+        train_tf_idf = word_vectorizer.fit_transform(train_rows["textDescription"][train_indices])
+        test_tf_idf = word_vectorizer.transform(train_rows["textDescription"][test_indices])
+
+        # model text features
+        clf1 = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True,
+                                     intercept_scaling=0.1)
+
+        clf2 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.000001, n_jobs=2)
+
+        clf3 = svm.LinearSVC(C=1, class_weight=None, dual=False, fit_intercept=True, intercept_scaling=1, loss='l2',
+                             multi_class='ovr', penalty='l1',random_state=None, tol=0.001, verbose=0)
+
+        clf1_predict = fit_and_evaluate(clf1, train_tf_idf, target[train_indices], test_tf_idf, target[test_indices])
+        clf2_predict = fit_and_evaluate(clf2, train_tf_idf, target[train_indices], test_tf_idf, target[test_indices])
+        clf3_predict = fit_and_evaluate(clf3, train_tf_idf, target[train_indices], test_tf_idf, target[test_indices], False)
+
+
+        # model 3
+
     #     clf4 = RidgeClassifier(tol=0.000001, normalize=True).fit(trainTfIdf, target[trainIndex])
     #     wordsTestPredictRidge = clf4.predict(testTfIdf)
     #     evaluate(wordsTestPredictRidge, target[testIndex], name="wordsTestPredictRidge", is_proba=False)
@@ -325,12 +329,13 @@ def train(rows):
 
 if __name__=="__main__":
 
-    rows = loadData()
+    tr_rows = load_data()
 
     #### Testing
-    testing = True
+    testing = False
     if testing:
-        test(rows)
+        tst_rows = load_data(False)
+        test(tr_rows, tst_rows)
     else:
-        train(rows)
+        train(tr_rows)
         print "hello"
