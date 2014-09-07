@@ -42,8 +42,11 @@ def prep_data(data_rows, sample_size, features, has_target=True):
         attributes = attributes.strip()
 
         # combine title + description and attrs into one text field
-        text = data_row['title'] + " " + data_row['description'] + " " + attributes + " "
-        features["textDescription"].append(text)
+        features["title_description_attr"].append(data_row['title'] + " " + data_row['description'] + " " + attributes)
+        features["title"].append(data_row['title'])
+        features["attrs"].append(attributes)
+        features["description"].append(data_row['description'])
+        features["title_description"].append(data_row['title'] + " " + data_row['description'])
 
         # numeric features
         arr = []
@@ -52,19 +55,22 @@ def prep_data(data_rows, sample_size, features, has_target=True):
         has_phone = 0
         if int(data_row['phones_cnt']) > 0:
             has_phone = 1
-        arr.append(has_phone)
+        #arr.append(has_phone)
+        arr.append(int(data_row['phones_cnt']) )
 
         # boolean if it has an email
         has_email = 0
         if int(data_row['emails_cnt']) > 0:
             has_email = 1
-        arr.append(has_email)
+        #arr.append(has_email)
+        arr.appendint(data_row['emails_cnt'])
 
         # boolean attribute if it has a URL
         has_urls = 0
         if int(data_row['urls_cnt']) > 0:
             has_urls = 1
-        arr.append(has_urls)
+        #arr.append(has_urls)
+        arr.append(int(data_row['urls_cnt']))
 
         # encode category and sub category
         # todo: find a better hashing method, rather than a dictionary lookup
@@ -85,6 +91,7 @@ def prep_data(data_rows, sample_size, features, has_target=True):
         arr.append(title_length)
 
         # count of words in the description
+        text = data_row['title'] + " " + data_row['description'] + " " + attributes;
         text_length = len(text.split())
         arr.append(text_length)
 
@@ -94,7 +101,7 @@ def prep_data(data_rows, sample_size, features, has_target=True):
 
 
         if has_target:
-            features["target"].append(target_mapper(data_row['is_blocked'], data_row['is_proved']))
+            features["target"].append(target_mapper(data_row['is_blocked']))
 
             # if row['is_proved'] not in countofApproved:
             #     countofApproved[row['is_proved']] = 0
@@ -106,11 +113,11 @@ def prep_data(data_rows, sample_size, features, has_target=True):
         features["numericDescription"].append(arr)
 
 
-def load_pickled_file(fileName):
-    fl = open(fileName, 'rb')
+def load_pickled_file(file_name):
+    fl = open(file_name, 'rb')
     pcl = pickle.load(fl)
     fl.close()
-    return pcl;
+    return pcl
 
 
 def evaluate(predict, truth, name, is_proba=True):
@@ -139,7 +146,7 @@ def load_data(train_mode=True):
         # for both classes
         sample_size = len(blocked)
 
-        data_rows["textDescription"] = [];
+        data_rows["title_description_attr"] = [];
         data_rows["numericDescription"] = [];
         data_rows["categoryDescription"] = [];
         data_rows["subcategoryDescription"] = []
@@ -147,6 +154,10 @@ def load_data(train_mode=True):
         data_rows["target"] = []
         data_rows["lookupCats"] = {}
         data_rows["lookupSubCats"] = {}
+        data_rows["title"] = []
+        data_rows["description"] = []
+        data_rows["attrs"] = []
+        data_rows["title_description"] = []
 
         t0 = time.time()
         prep_data(blocked, sample_size, data_rows)
@@ -171,6 +182,10 @@ def load_data(train_mode=True):
         data_rows["target"] = []
         data_rows["lookupCats"] = data_rows["lookupCats"]
         data_rows["lookupSubCats"] = data_rows["lookupSubCats"]
+        data_rows["title"] = []
+        data_rows["description"] = []
+        data_rows["attrs"] = []
+
 
         prep_data(tst_data, len(tst_data), data_rows, False)
 
@@ -187,7 +202,7 @@ def test(train_rows, test_rows):
     train_rows["textDescription"] = numpy.array(train_rows["textDescription"])
     target = numpy.array(train_rows["target"])
 
-    word_vectorizer = TfidfVectorizer(ngram_range=(1,4), analyzer="word", binary=False, min_df=2, smooth_idf=True,
+    word_vectorizer = TfidfVectorizer(ngram_range=(1, 2), analyzer="word", binary=False, min_df=2, smooth_idf=True,
                                       sublinear_tf=True, use_idf=True, max_features=50000, max_df=0.9, lowercase=True)
     train_tf_idf = word_vectorizer.fit_transform(train_rows["textDescription"])
 
@@ -208,19 +223,20 @@ def test(train_rows, test_rows):
 
 
 def fit_and_evaluate(clf, train_x, train_y, test_x, test_y, is_proba=True):
+    print "Training: ",clf.__class__.__name__
     clf = clf.fit(train_x, train_y)
     results = []
     if is_proba:
         results = clf.predict_proba(test_x)[:, 1]
     else:
         results = clf.predict(test_x)
-    evaluate(results, test_y, name="name", is_proba=False)
+
+    evaluate(results, test_y, name=clf.__class__.__name__, is_proba=is_proba)
     return results
 
 
 def train(train_rows):
     print "Training ... "
-    t0 = time.time()
 
     target = numpy.array(train_rows["target"])
     numeric_feats = numpy.array(train_rows["numericDescription"], dtype=float)
@@ -236,7 +252,7 @@ def train(train_rows):
 
 
         # 1. text based features
-        word_vectorizer = TfidfVectorizer(ngram_range=(1,4), analyzer="word", binary=False, min_df=2,
+        word_vectorizer = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2,
                                           smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=50000,
                                           max_df=0.9, lowercase=True)
         train_tf_idf = word_vectorizer.fit_transform(train_rows["textDescription"][train_indices])
@@ -255,7 +271,6 @@ def train(train_rows):
         clf2_predict = fit_and_evaluate(clf2, train_tf_idf, target[train_indices], test_tf_idf, target[test_indices])
         clf3_predict = fit_and_evaluate(clf3, train_tf_idf, target[train_indices], test_tf_idf, target[test_indices], False)
 
-
         # model 3
 
     #     clf4 = RidgeClassifier(tol=0.000001, normalize=True).fit(trainTfIdf, target[trainIndex])
@@ -270,7 +285,8 @@ def train(train_rows):
     #     # newFeats = numpy.concatenate((hotEncoded, nonencodable), axis=1)
     #     #
     #     # # model numeric features
-    #     # clfNum1 = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True,intercept_scaling=0.1).fit(newFeats[trainIndex,:], target[trainIndex])
+    #     # clfNum1 = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True,intercept_scaling=0.1)
+    # .fit(newFeats[trainIndex,:], target[trainIndex])
     #     # numericFeatsPredictLR = clfNum1.predict_proba(newFeats[testIndex,:])[:,1]
     #     # evaluate(numericFeatsPredictLR, target[testIndex], name="numericFeatsPredictLR")
     #     #
@@ -288,7 +304,8 @@ def train(train_rows):
     #
     #
     #     #3. numeric feats + textfeats => to generate level2 model
-    #     featsModelLevel2 = numpy.column_stack((wordsTestPredictLR, wordsTestPredictSGD, wordsTestPredictSVC, wordsTestPredictRidge))#, numericFeatsPredictRF, numericFeatsPredictSVC))
+    #     featsModelLevel2 = numpy.column_stack((wordsTestPredictLR, wordsTestPredictSGD, wordsTestPredictSVC, wordsTestPredictRidge))
+    # #, numericFeatsPredictRF, numericFeatsPredictSVC))
     #
     #     # train on previous steps predict's target
     #     #clfLevel2 = GradientBoostingClassifier(n_estimators=100, random_state=0)
@@ -314,7 +331,8 @@ def train(train_rows):
     #
     #
     #     # create a feature set whose target is target{testIndex}
-    #     testFeatsLevelTwo = numpy.column_stack((wordsTestPredictLRHoldOut, wordsTestPredictSGDHoldOut, wordsTestPredictSVCHoldOut, wordsTestPredictRidgeHoldOut)) #, numericFeatsPredictRFHoldOut, numericFeatsPredictSVCHoldOut))
+    #     testFeatsLevelTwo = numpy.column_stack((wordsTestPredictLRHoldOut, wordsTestPredictSGDHoldOut,
+    # wordsTestPredictSVCHoldOut, wordsTestPredictRidgeHoldOut)) #, numericFeatsPredictRFHoldOut, numericFeatsPredictSVCHoldOut))
     #
     #     finalPredict = clfLevel2.predict_proba(testFeatsLevelTwo)[:,1]
     #     evaluate(finalPredict, target[holdoutIndex], name="Level2LR", is_proba=True)
@@ -325,6 +343,79 @@ def train(train_rows):
     #
     #
     # print scores
+
+def train_v2(train_rows):
+    print "Training ... "
+
+    target = numpy.array(train_rows["target"])
+    numeric_feats = numpy.array(train_rows["numericDescription"], dtype=float)
+    train_rows["title"] = numpy.array(train_rows["title"])
+    train_rows["description"] = numpy.array(train_rows["description"])
+    train_rows["attrs"] = numpy.array(train_rows["attr"])
+
+    scores = []
+    # split into train and test
+    rs = cross_validation.ShuffleSplit(len(target), 3, test_size=0.2)
+    for train_set_indices, holdout_indices in rs:
+
+        # 0. get the data splits, here test is split into train and test to generate input for the secondary model
+        train_indices, test_indices = train_test_split(train_set_indices, test_size=0.2)
+
+        word_vectorizer_title = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
+        word_vectorizer_descr = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
+        word_vectorizer_attr = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
+        word_vectorizer_title_desc = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
+        word_vectorizer_title_desc_attr = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
+
+
+        title_train_tf_idf = word_vectorizer_title.fit_transform(train_rows["title"][train_indices])
+        title_test_tf_idf = word_vectorizer_title.transform(train_rows["title"][test_indices])
+        descript_train_tf_idf = word_vectorizer_descr.fit_transform(train_rows["description"][train_indices])
+        descript_test_tf_idf = word_vectorizer_descr.transform(train_rows["description"][test_indices])
+        attr_train_tf_idf = word_vectorizer_attr.fit_transform(train_rows["attrs"][train_indices])
+        attr_test_tf_idf = word_vectorizer_attr.transform(train_rows["attrs"][test_indices])
+        title_descr_attr_train_tf_idf = word_vectorizer_title_desc_attr.fit_transform(train_rows["title_description_attr"][train_indices])
+        title_descr_attr_test_tf_idf = word_vectorizer_title_desc_attr.transform(train_rows["title_description_attr"][test_indices])
+        title_descr_train_tf_idf = word_vectorizer_title_desc.fit_transform(train_rows["title_description"][train_indices])
+        title_descr_test_tf_idf = word_vectorizer_title_desc.transform(train_rows["title_description"][test_indices])
+
+
+        clf1 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
+        clf2 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
+        clf3 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
+        clf5 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
+        clf6 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
+
+        clf1_predict = fit_and_evaluate(clf1, title_train_tf_idf, target[train_indices], title_test_tf_idf, target[test_indices], False)
+        clf2_predict = fit_and_evaluate(clf2, descript_train_tf_idf, target[train_indices], descript_test_tf_idf, target[test_indices], False)
+        clf3_predict = fit_and_evaluate(clf3, attr_train_tf_idf, target[train_indices], attr_test_tf_idf, target[test_indices], False)
+        clf5_predict = fit_and_evaluate(clf5, title_descr_attr_train_tf_idf, target[train_indices], title_descr_attr_test_tf_idf, target[test_indices], False)
+        clf6_predict = fit_and_evaluate(clf6, title_descr_train_tf_idf, target[train_indices], title_descr_test_tf_idf, target[test_indices], False)
+
+
+        level2_train_feats = numpy.column_stack((clf1_predict, clf2_predict, clf3_predict,clf5_predict,clf6_predict))
+        clf4 = GradientBoostingClassifier(n_estimators=1500)
+        clf4_predict, clf4 = fit_and_evaluate(clf4, level2_train_feats, target[test_indices], level2_test_feats, target[test_indices])
+
+        title_holdout_tf_idf = word_vectorizer_title.transform(train_rows["title"][holdout_indices])
+        descript_holdout_tf_idf = word_vectorizer_descr.transform(train_rows["description"][holdout_indices])
+        attr_holdout_tf_idf = word_vectorizer_attr.transform(train_rows["attrs"][holdout_indices])
+
+        title_description_holdout_tfidf = word_vectorizer_title_desc.transform(train_rows["title_description"][holdout_indices])
+        title_description_attr_holdout_tf_idf = word_vectorizer_title_desc_attr.transform(train_rows["title_description_attr"][holdout_indices])
+
+        clf1_holdout = clf1.predict(title_holdout_tf_idf)
+        clf2_holdout = clf2.predict(descript_holdout_tf_idf)
+        clf3_holdout = clf3.predict(attr_holdout_tf_idf)
+
+        clf5_holdout = clf5.predict(title_description_attr_holdout_tf_idf)
+        clf6_holdout = clf6.predict(title_description_holdout_tfidf)
+
+
+        level2_test_feats = numpy.column_stack((clf1_holdout, clf2_holdout, clf3_holdout, clf5_holdout, clf6_holdout))
+        final_predict = clf4.predict(level2_test_feats)
+        evaluate(final_predict, target[holdout_indices], name=clf4.__class__.__name__, is_proba=False)
+
 
 
 if __name__=="__main__":
@@ -337,5 +428,5 @@ if __name__=="__main__":
         tst_rows = load_data(False)
         test(tr_rows, tst_rows)
     else:
-        train(tr_rows)
+        #train(tr_rows)
         print "hello"

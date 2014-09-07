@@ -1,0 +1,87 @@
+target = numpy.array(train_rows["target"])
+train_rows["title"] = numpy.array(train_rows["title"])
+train_rows["description"] = numpy.array(train_rows["description"])
+train_rows["attrs"] = numpy.array(train_rows["attrs"])
+train_rows["title_description_attr"] = numpy.array(train_rows["title_description_attr"])
+train_rows["title_description"] = numpy.array(train_rows["title_description"])
+
+
+rs = cross_validation.ShuffleSplit(len(target), 3, test_size=0.2)
+for train_set_indices, holdout_indices in rs:
+    train_indices, test_indices = train_test_split(train_set_indices, test_size=0.2)
+
+
+SGDClassifier(loss='hinge', penalty='l2', alpha=1e-3, n_iter=5))
+svm.LinearSVC(C=1, class_weight=None, dual=False, fit_intercept=True, intercept_scaling=1, loss='l2',
+                             multi_class='ovr', penalty='l1',random_state=None, tol=0.001, verbose=0)
+
+
+word_vectorizer_title = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
+word_vectorizer_descr = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
+word_vectorizer_attr = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
+word_vectorizer_ = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
+word_vectorizer_title_desc = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
+word_vectorizer_title_desc_attr = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
+
+
+
+title_train_tf_idf = word_vectorizer_title.fit_transform(train_rows["title"][train_indices])
+title_test_tf_idf = word_vectorizer_title.transform(train_rows["title"][test_indices])
+descript_train_tf_idf = word_vectorizer_descr.fit_transform(train_rows["description"][train_indices])
+descript_test_tf_idf = word_vectorizer_descr.transform(train_rows["description"][test_indices])
+attr_train_tf_idf = word_vectorizer_attr.fit_transform(train_rows["attrs"][train_indices])
+attr_test_tf_idf = word_vectorizer_attr.transform(train_rows["attrs"][test_indices])
+title_descr_attr_train_tf_idf = word_vectorizer_title_desc_attr.fit_transform(train_rows["title_description_attr"][train_indices])
+title_descr_attr_test_tf_idf = word_vectorizer_title_desc_attr.transform(train_rows["title_description_attr"][test_indices])
+title_descr_train_tf_idf = word_vectorizer_title_desc.fit_transform(train_rows["title_description"][train_indices])
+title_descr_test_tf_idf = word_vectorizer_title_desc.transform(train_rows["title_description"][test_indices])
+
+
+clf1 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
+clf2 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
+clf3 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
+clf5 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
+clf6 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
+
+clf1_predict = fit_and_evaluate(clf1, title_train_tf_idf, target[train_indices], title_train_tf_idf, target[train_indices], False)
+clf2_predict = fit_and_evaluate(clf2, descript_train_tf_idf, target[train_indices], descript_train_tf_idf, target[train_indices], False)
+clf3_predict = fit_and_evaluate(clf3, attr_train_tf_idf, target[train_indices], attr_train_tf_idf, target[train_indices], False)
+clf5_predict = fit_and_evaluate(clf5, title_descr_attr_train_tf_idf, target[train_indices], title_descr_attr_train_tf_idf, target[train_indices], False)
+clf6_predict = fit_and_evaluate(clf6, title_descr_train_tf_idf, target[train_indices], title_descr_train_tf_idf, target[train_indices], False)
+
+
+level2_train_feats = numpy.column_stack((clf1_predict, clf2_predict, clf3_predict,clf5_predict,clf6_predict, numericFeats[train_indices,0], numericFeats[train_indices,1], numericFeats[train_indices,2], numericFeats[train_indices,3], numericFeats[train_indices,4], numericFeats[train_indices,5], numericFeats[train_indices,6], numericFeats[train_indices,7], numericFeats[train_indices,8]))
+clf4 = GradientBoostingClassifier(n_estimators=1500)
+clf4_predict, clf4 = fit_and_evaluate(clf4, level2_train_feats, target[train_indices], level2_train_feats, target[train_indices])
+
+title_holdout_tf_idf = word_vectorizer_title.transform(train_rows["title"][holdout_indices])
+descript_holdout_tf_idf = word_vectorizer_descr.transform(train_rows["description"][holdout_indices])
+attr_holdout_tf_idf = word_vectorizer_attr.transform(train_rows["attrs"][holdout_indices])
+
+title_description_holdout_tfidf = word_vectorizer_title_desc.transform(train_rows["title_description"][holdout_indices])
+title_description_attr_holdout_tf_idf = word_vectorizer_title_desc_attr.transform(train_rows["title_description_attr"][holdout_indices])
+
+clf1_holdout = clf1.predict(title_holdout_tf_idf)
+clf2_holdout = clf2.predict(descript_holdout_tf_idf)
+clf3_holdout = clf3.predict(attr_holdout_tf_idf)
+
+clf5_holdout = clf5.predict(title_description_attr_holdout_tf_idf)
+clf6_holdout = clf6.predict(title_description_holdout_tfidf)
+
+
+level2_test_feats = numpy.column_stack((clf1_holdout, clf2_holdout, clf3_holdout, clf5_holdout, clf6_holdout, numericFeats[holdout_indices,0], numericFeats[holdout_indices,1], numericFeats[holdout_indices,2], numericFeats[holdout_indices,3], numericFeats[holdout_indices,4], numericFeats[holdout_indices,5], numericFeats[holdout_indices,6], numericFeats[holdout_indices,7], numericFeats[holdout_indices,8])))
+final_predict = clf4.predict(level2_test_feats)
+
+
+evaluate(clf1_holdout, target[holdout_indices], name=clf4.__class__.__name__, is_proba=False)
+evaluate(clf2_holdout, target[holdout_indices], name=clf4.__class__.__name__, is_proba=False)
+evaluate(clf3_holdout, target[holdout_indices], name=clf4.__class__.__name__, is_proba=False)
+evaluate(clf5_holdout, target[holdout_indices], name=clf4.__class__.__name__, is_proba=False)
+evaluate(clf6_holdout, target[holdout_indices], name=clf4.__class__.__name__, is_proba=False)
+
+
+evaluate(final_predict, target[holdout_indices], name=clf4.__class__.__name__, is_proba=False)
+
+
+
+
