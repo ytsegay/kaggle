@@ -37,11 +37,11 @@ title_descr_train_tf_idf = word_vectorizer_title_desc.fit_transform(train_rows["
 title_descr_test_tf_idf = word_vectorizer_title_desc.transform(train_rows["title_description"][test_indices])
 
 
-clf1 = svm.LinearSVC(C=1, class_weight=None, dual=False, fit_intercept=True, intercept_scaling=1, loss='l2', multi_class='ovr', penalty='l1',random_state=None, tol=0.001, verbose=0)
-clf2 = svm.LinearSVC(C=1, class_weight=None, dual=False, fit_intercept=True, intercept_scaling=1, loss='l2', multi_class='ovr', penalty='l1',random_state=None, tol=0.001, verbose=0)
-clf3 = svm.LinearSVC(C=1, class_weight=None, dual=False, fit_intercept=True, intercept_scaling=1, loss='l2', multi_class='ovr', penalty='l1',random_state=None, tol=0.001, verbose=0)
-clf5 = svm.LinearSVC(C=1, class_weight=None, dual=False, fit_intercept=True, intercept_scaling=1, loss='l2', multi_class='ovr', penalty='l1',random_state=None, tol=0.001, verbose=0)
-clf6 = svm.LinearSVC(C=1, class_weight=None, dual=False, fit_intercept=True, intercept_scaling=1, loss='l2', multi_class='ovr', penalty='l1',random_state=None, tol=0.001, verbose=0)
+clf1 = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True, intercept_scaling=0.1)
+clf2 = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True, intercept_scaling=0.1)
+clf3 = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True, intercept_scaling=0.1)
+clf5 = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True, intercept_scaling=0.1)
+clf6 = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True, intercept_scaling=0.1)
 
 clf1_predict = fit_and_evaluate(clf1, title_train_tf_idf, target[train_indices], title_train_tf_idf, target[train_indices], False)
 clf2_predict = fit_and_evaluate(clf2, descript_train_tf_idf, target[train_indices], descript_train_tf_idf, target[train_indices], False)
@@ -81,6 +81,27 @@ evaluate(clf6_holdout, target[holdout_indices], name=clf4.__class__.__name__, is
 
 
 evaluate(final_predict, target[holdout_indices], name=clf4.__class__.__name__, is_proba=False)
+
+
+
+def train(train_rows):
+    print "Training ... "
+    target = numpy.array(train_rows["target"])
+    train_rows["title_description_attr"] = numpy.array(train_rows["title_description_attr"])
+    scores = []
+    rs = cross_validation.ShuffleSplit(len(target), 3, test_size=0.2)
+    for train_set_indices, holdout_indices in rs:
+        train_indices = train_set_indices
+        test_indices = holdout_indices
+        word_vectorizer = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=50000, max_df=0.9, lowercase=True)
+        train_tf_idf = word_vectorizer.fit_transform(train_rows["title_description_attr"][train_indices])
+        test_tf_idf = word_vectorizer.transform(train_rows["title_description_attr"][test_indices])
+        clf1 = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True, intercept_scaling=0.1)
+        clf2 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.000001, n_jobs=2)
+        clf3 = svm.LinearSVC(C=1, class_weight=None, dual=False, fit_intercept=True, intercept_scaling=1, loss='l2', multi_class='ovr', penalty='l1',random_state=None, tol=0.001, verbose=0)
+        clf1_predict = fit_and_evaluate(clf1, train_tf_idf, target[train_indices], test_tf_idf, target[test_indices])
+        clf2_predict = fit_and_evaluate(clf2, train_tf_idf, target[train_indices], test_tf_idf, target[test_indices], False)
+        clf3_predict = fit_and_evaluate(clf3, train_tf_idf, target[train_indices], test_tf_idf, target[test_indices], False)
 
 
 

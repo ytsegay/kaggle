@@ -63,7 +63,7 @@ def prep_data(data_rows, sample_size, features, has_target=True):
         if int(data_row['emails_cnt']) > 0:
             has_email = 1
         #arr.append(has_email)
-        arr.appendint(data_row['emails_cnt'])
+        arr.append(int(data_row['emails_cnt']))
 
         # boolean attribute if it has a URL
         has_urls = 0
@@ -199,17 +199,17 @@ def test(train_rows, test_rows):
     # need to load training data
 
     print "Testing ..."
-    train_rows["textDescription"] = numpy.array(train_rows["textDescription"])
+    train_rows["title_description_attr"] = numpy.array(train_rows["title_description_attr"])
     target = numpy.array(train_rows["target"])
 
     word_vectorizer = TfidfVectorizer(ngram_range=(1, 2), analyzer="word", binary=False, min_df=2, smooth_idf=True,
                                       sublinear_tf=True, use_idf=True, max_features=50000, max_df=0.9, lowercase=True)
-    train_tf_idf = word_vectorizer.fit_transform(train_rows["textDescription"])
+    train_tf_idf = word_vectorizer.fit_transform(train_rows["title_description_attr"])
 
     clf = lm.LogisticRegression(penalty='l1', dual=False, tol=0.0000001, C=3, fit_intercept=True,
                                 intercept_scaling=0.1).fit(train_tf_idf, target)
 
-    tst_tf_idf = word_vectorizer.transform(test_rows["textDescription"])
+    tst_tf_idf = word_vectorizer.transform(test_rows["title_description_attr"])
 
     tst_word_predict = clf.predict_proba(tst_tf_idf)[:,1]
 
@@ -239,17 +239,16 @@ def train(train_rows):
     print "Training ... "
 
     target = numpy.array(train_rows["target"])
-    numeric_feats = numpy.array(train_rows["numericDescription"], dtype=float)
-    train_rows["textDescription"] = numpy.array(train_rows["textDescription"])
+    #numeric_feats = numpy.array(train_rows["numericDescription"], dtype=float)
+    train_rows["title_description_attr"] = numpy.array(train_rows["title_description_attr"])
 
     scores = []
     # split into train and test
     rs = cross_validation.ShuffleSplit(len(target), 3, test_size=0.2)
     for train_set_indices, holdout_indices in rs:
 
-        # 0. get the data splits, here test is split into train and test to generate input for the secondary model
-        train_indices, test_indices = train_test_split(train_set_indices, test_size=0.2)
-
+        train_indices = train_set_indices
+        test_indices = holdout_indices
 
         # 1. text based features
         word_vectorizer = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2,
@@ -344,6 +343,33 @@ def train(train_rows):
     #
     # print scores
 
+def train_v2_vectorize_learn_evaluate(train_data, train_target, test_data, test_target):
+    vectorizer = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
+    train_vect = vectorizer.fit_transform(train_data)
+    test_vect = vectorizer.transform(test_data)
+
+    clf = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
+    clf_supports_proba = False
+
+    predictions = fit_and_evaluate(clf, train_vect, train_target, test_vect, test_target, clf_supports_proba)
+
+    return vectorizer, clf, predictions
+
+def vectorize_predict_evaluate(clf, vectorizer, clf_supports_proba, test_data, test_target):
+    test_vect = vectorizer.transform(test_data)
+
+    outcomes = clf.predict(test_vect)
+
+    if clf_supports_proba:
+        outcomes = [numpy.round(entry) for entry in outcomes]
+
+    if len(test_target) > 0:
+        score = precision_score(test_target, outcomes)
+        print "Using ",clf.__class__.__name__, " score: ", score
+
+    return outcomes
+
+
 def train_v2(train_rows):
     print "Training ... "
 
@@ -351,69 +377,34 @@ def train_v2(train_rows):
     numeric_feats = numpy.array(train_rows["numericDescription"], dtype=float)
     train_rows["title"] = numpy.array(train_rows["title"])
     train_rows["description"] = numpy.array(train_rows["description"])
-    train_rows["attrs"] = numpy.array(train_rows["attr"])
-
+    train_rows["attrs"] = numpy.array(train_rows["attrs"])
+    train_rows["title_description_attr"] = numpy.array(train_rows["title_description_attr"])
+    train_rows["title_description"] = numpy.array(train_rows["title_description"])
     scores = []
     # split into train and test
     rs = cross_validation.ShuffleSplit(len(target), 3, test_size=0.2)
     for train_set_indices, holdout_indices in rs:
-
         # 0. get the data splits, here test is split into train and test to generate input for the secondary model
         train_indices, test_indices = train_test_split(train_set_indices, test_size=0.2)
+        vect1, clf1, predictions1 = train_v2_vectorize_learn_evaluate(train_rows["title"][train_indices], target[train_indices], train_rows["title"][test_indices], target[test_indices])
+        vect2, clf2, predictions2 = train_v2_vectorize_learn_evaluate(train_rows["description"][train_indices], target[train_indices], train_rows["description"][test_indices], target[test_indices])
+        vect3, clf3, predictions3 = train_v2_vectorize_learn_evaluate(train_rows["attrs"][train_indices], target[train_indices], train_rows["attrs"][test_indices], target[test_indices])
+        vect4, clf4, predictions4 = train_v2_vectorize_learn_evaluate(train_rows["title_description"][train_indices], target[train_indices], train_rows["title_description"][test_indices], target[test_indices])
+        vect5, clf5, predictions5 = train_v2_vectorize_learn_evaluate(train_rows["title_description_attr"][train_indices], target[train_indices], train_rows["title_description_attr"][test_indices], target[test_indices])
 
-        word_vectorizer_title = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
-        word_vectorizer_descr = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
-        word_vectorizer_attr = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
-        word_vectorizer_title_desc = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
-        word_vectorizer_title_desc_attr = TfidfVectorizer(ngram_range=(1,2), analyzer="word", binary=False, min_df=2, smooth_idf=True, sublinear_tf=True, use_idf=True, max_features=100000, max_df=0.9, lowercase=True)
+        level2_train_feats = numpy.column_stack((predictions1, predictions2, predictions3,predictions4,predictions5))
+        clf_level_two = GradientBoostingClassifier(n_estimators=1500)
+        fit_and_evaluate(clf_level_two, level2_train_feats, target[test_indices], level2_train_feats, target[test_indices])
 
+        hold_outcomes_1 = vectorize_predict_evaluate(clf1, vect1, False, train_rows["title"][holdout_indices], target[holdout_indices])
+        hold_outcomes_2 = vectorize_predict_evaluate(clf1, vect1, False, train_rows["description"][holdout_indices], target[holdout_indices])
+        hold_outcomes_3 = vectorize_predict_evaluate(clf1, vect1, False, train_rows["attrs"][holdout_indices], target[holdout_indices])
+        hold_outcomes_4 = vectorize_predict_evaluate(clf1, vect1, False, train_rows["title_description"][holdout_indices], target[holdout_indices])
+        hold_outcomes_5 = vectorize_predict_evaluate(clf1, vect1, False, train_rows["title_description_attr"][holdout_indices], target[holdout_indices])
 
-        title_train_tf_idf = word_vectorizer_title.fit_transform(train_rows["title"][train_indices])
-        title_test_tf_idf = word_vectorizer_title.transform(train_rows["title"][test_indices])
-        descript_train_tf_idf = word_vectorizer_descr.fit_transform(train_rows["description"][train_indices])
-        descript_test_tf_idf = word_vectorizer_descr.transform(train_rows["description"][test_indices])
-        attr_train_tf_idf = word_vectorizer_attr.fit_transform(train_rows["attrs"][train_indices])
-        attr_test_tf_idf = word_vectorizer_attr.transform(train_rows["attrs"][test_indices])
-        title_descr_attr_train_tf_idf = word_vectorizer_title_desc_attr.fit_transform(train_rows["title_description_attr"][train_indices])
-        title_descr_attr_test_tf_idf = word_vectorizer_title_desc_attr.transform(train_rows["title_description_attr"][test_indices])
-        title_descr_train_tf_idf = word_vectorizer_title_desc.fit_transform(train_rows["title_description"][train_indices])
-        title_descr_test_tf_idf = word_vectorizer_title_desc.transform(train_rows["title_description"][test_indices])
-
-
-        clf1 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
-        clf2 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
-        clf3 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
-        clf5 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
-        clf6 = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
-
-        clf1_predict = fit_and_evaluate(clf1, title_train_tf_idf, target[train_indices], title_test_tf_idf, target[test_indices], False)
-        clf2_predict = fit_and_evaluate(clf2, descript_train_tf_idf, target[train_indices], descript_test_tf_idf, target[test_indices], False)
-        clf3_predict = fit_and_evaluate(clf3, attr_train_tf_idf, target[train_indices], attr_test_tf_idf, target[test_indices], False)
-        clf5_predict = fit_and_evaluate(clf5, title_descr_attr_train_tf_idf, target[train_indices], title_descr_attr_test_tf_idf, target[test_indices], False)
-        clf6_predict = fit_and_evaluate(clf6, title_descr_train_tf_idf, target[train_indices], title_descr_test_tf_idf, target[test_indices], False)
-
-
-        level2_train_feats = numpy.column_stack((clf1_predict, clf2_predict, clf3_predict,clf5_predict,clf6_predict))
-        clf4 = GradientBoostingClassifier(n_estimators=1500)
-        clf4_predict, clf4 = fit_and_evaluate(clf4, level2_train_feats, target[test_indices], level2_test_feats, target[test_indices])
-
-        title_holdout_tf_idf = word_vectorizer_title.transform(train_rows["title"][holdout_indices])
-        descript_holdout_tf_idf = word_vectorizer_descr.transform(train_rows["description"][holdout_indices])
-        attr_holdout_tf_idf = word_vectorizer_attr.transform(train_rows["attrs"][holdout_indices])
-
-        title_description_holdout_tfidf = word_vectorizer_title_desc.transform(train_rows["title_description"][holdout_indices])
-        title_description_attr_holdout_tf_idf = word_vectorizer_title_desc_attr.transform(train_rows["title_description_attr"][holdout_indices])
-
-        clf1_holdout = clf1.predict(title_holdout_tf_idf)
-        clf2_holdout = clf2.predict(descript_holdout_tf_idf)
-        clf3_holdout = clf3.predict(attr_holdout_tf_idf)
-
-        clf5_holdout = clf5.predict(title_description_attr_holdout_tf_idf)
-        clf6_holdout = clf6.predict(title_description_holdout_tfidf)
-
-
-        level2_test_feats = numpy.column_stack((clf1_holdout, clf2_holdout, clf3_holdout, clf5_holdout, clf6_holdout))
-        final_predict = clf4.predict(level2_test_feats)
+        print "Level two stacking ..."
+        level2_test_feats = numpy.column_stack((hold_outcomes_1, hold_outcomes_2, hold_outcomes_3, hold_outcomes_4, hold_outcomes_5))
+        final_predict = clf_level_two.predict(level2_test_feats)
         evaluate(final_predict, target[holdout_indices], name=clf4.__class__.__name__, is_proba=False)
 
 
