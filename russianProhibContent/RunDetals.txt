@@ -1,4 +1,29 @@
-Run details:
+Final Results: Findings:
+
+Logistic regression and linear svm worked well on this data set. In fact my best model had a precision score (10 fold
+cv) training set of 96.8%
+My public LB score was in the low 96% which gave a final score of 96th out of 400 teams. Not bad for a about half a
+dozen entries.
+
+What worked:
+- Simple linear models
+- Param tuning
+- combining the textual content into a single string
+
+What did not work:
+- Ensemble models (too slow)
+- Dimension reduction
+- stacking numerical features with models from the textual features
+- stopping and stemming
+- i tried implementing the winning approach, and i wasn't able to get (locally) anything better than a 97% accuracy
+
+
+
+
+
+
+
+Run details logs:
 
 Submission 1:
 -------------

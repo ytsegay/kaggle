@@ -348,7 +348,8 @@ def train_v2_vectorize_learn_evaluate(train_data, train_target, test_data, test_
     train_vect = vectorizer.fit_transform(train_data)
     test_vect = vectorizer.transform(test_data)
 
-    clf = lm.SGDClassifier(penalty='l2', n_iter=1200, alpha=0.0000075, n_jobs=2)
+    clf = svm.LinearSVC(C=1, class_weight=None, dual=False, fit_intercept=True, intercept_scaling=1, loss='l2',
+                        multi_class='ovr', penalty='l1',random_state=None, tol=0.001, verbose=0)
     clf_supports_proba = False
 
     predictions = fit_and_evaluate(clf, train_vect, train_target, test_vect, test_target, clf_supports_proba)
